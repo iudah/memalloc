@@ -1,3 +1,4 @@
+#include <math.h>
 #include <memory.h>
 #include <pthread.h>
 #include <stdint.h>
@@ -9,7 +10,12 @@
 #define kB (1024)
 #define MB (kB * kB)
 #define GB (MB * kB)
-#define POOL_SIZE (4 * MB)
+
+#ifndef POOL_SIZE_IN_MB
+#define POOL_SIZE_IN_MB (512)
+#endif
+#define POOL_SIZE (POOL_SIZE_IN_MB * MB)
+
 #define MINIMUM_BLOCK_SIZE (sizeof(struct block))
 #define HEADER_SIZE (offsetof(struct block, next_block))
 
@@ -46,6 +52,7 @@ block *free_list;
 
 void *allocate(uint64_t size);
 void *reallocate(void *old_ptr, uint64_t new_size);
+void scan_for_garbage();
 
 void *get_memory_pool(uint64_t pool_size) {
 
@@ -291,6 +298,12 @@ void *allocate(uint64_t size) {
   if (!block) {
     return nullptr;
   }
+
+  float ratio = (float)pool.max_size / pool.available_size;
+  if (fabsf(ratio - 4.f) <= 1e-6 || fabsf(ratio - 2.f) <= 1e-6 ||
+      fabsf(ratio - 4.f / 3) <= 1e-6 || fabsf(ratio - 4 / 3.9f) <= 1e-6)
+    scan_for_garbage();
+
   return &block->next_block;
 }
 
