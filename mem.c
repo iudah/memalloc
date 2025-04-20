@@ -6,7 +6,7 @@
 #include <string.h>
 #include <sys/mman.h>
 
-#define WORD_SIZE (sizeof(void *))
+#define WORD_SIZE (8)
 #define kB (1024)
 #define MB (kB * kB)
 #define GB (MB * kB)
@@ -17,7 +17,7 @@
 #define POOL_SIZE (POOL_SIZE_IN_MB * MB)
 
 #define MINIMUM_BLOCK_SIZE (sizeof(struct block))
-#define HEADER_SIZE (offsetof(struct block, next_block))
+#define HEADER_SIZE (sizeof(header))
 
 typedef struct {
   uint64_t block_size;
@@ -38,11 +38,11 @@ struct {
   uint64_t available_size;
 } pool;
 
-struct threads {
-  pthread_t *ids;
-  uint16_t count;
-  uint16_t limit;
-} threads;
+// struct threads {
+//   pthread_t *ids;
+//   uint16_t count;
+//   uint16_t limit;
+// } threads;
 
 pthread_mutex_t pool_mutex;
 pthread_mutex_t free_list_mutex;
@@ -55,7 +55,6 @@ void *reallocate(void *old_ptr, uint64_t new_size);
 void scan_for_garbage();
 
 void *get_memory_pool(uint64_t pool_size) {
-
   void *pool = mmap(0, pool_size, PROT_READ | PROT_WRITE,
                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
@@ -105,8 +104,7 @@ bool deinitialize_pool() {
 bool constructed = false;
 bool fully_constructed = false;
 pthread_t temp;
-static void __attribute__((constructor(1))) initialize_memalloc() {
-
+static void __attribute__((constructor)) initialize_memalloc() {
   if (!constructed) {
     constructed = true;
 
@@ -120,17 +118,16 @@ static void __attribute__((constructor(1))) initialize_memalloc() {
   }
 
   if (!fully_constructed) {
-    threads.ids = &temp;
-    threads.limit = 8;
-    threads.ids = allocate(8 * sizeof(pthread_t));
-    threads.ids[0] = temp;
+    // threads.ids = &temp;
+    // threads.limit = 8;
+    // threads.ids = allocate(8 * sizeof(pthread_t));
+    // threads.ids[0] = temp;
 
     fully_constructed = true;
   }
 }
 
-static void __attribute__((destructor(1))) deinitialize_memalloc() {
-
+static void __attribute__((destructor)) deinitialize_memalloc() {
   if (fully_constructed) {
     fully_constructed = false;
     return;
@@ -148,36 +145,33 @@ static void __attribute__((destructor(1))) deinitialize_memalloc() {
 
 static inline uint16_t min_u16(uint16_t a, uint16_t b) { return a < b ? a : b; }
 
-void add_thread_id(pthread_t id) {
+// void add_thread_id(pthread_t id) {
+//   pthread_mutex_lock(&threads_mutex);
 
-  pthread_mutex_lock(&threads_mutex);
+//   for (uint16_t i = 0; i < threads.count; i++) {
+//     if (pthread_equal(id, threads.ids[i])) {
+//       pthread_mutex_unlock(&threads_mutex);
+//       return;
+//     }
+//   }
 
-  for (uint16_t i = 0; i < threads.count; i++) {
-    if (pthread_equal(id, threads.ids[i])) {
-      pthread_mutex_unlock(&threads_mutex);
-      return;
-    }
-  }
+//   threads.ids[threads.count++] = id;
 
-  threads.ids[threads.count++] = id;
+//   if (threads.count == threads.limit) {
+//     if (threads.limit > UINT16_MAX) return;
+//     uint64_t new_limit = min_u16(threads.limit * 2, UINT16_MAX);
 
-  if (threads.count == threads.limit) {
-    if (threads.limit > UINT16_MAX)
-      return;
-    uint64_t new_limit = min_u16(threads.limit * 2, UINT16_MAX);
+//     // pthread_mutex_unlock(&threads_mutex);
+//     void *tmp = reallocate(threads.ids, new_limit * sizeof(pthread_t));
+//     // pthread_mutex_lock(&threads_mutex);
 
-    // pthread_mutex_unlock(&threads_mutex);
-    void *tmp = reallocate(threads.ids, new_limit * sizeof(pthread_t));
-    // pthread_mutex_lock(&threads_mutex);
+//     if (!tmp) return;
+//     threads.ids = tmp;
+//     threads.limit = new_limit;
+//   }
 
-    if (!tmp)
-      return;
-    threads.ids = tmp;
-    threads.limit = new_limit;
-  }
-
-  pthread_mutex_unlock(&threads_mutex);
-}
+//   pthread_mutex_unlock(&threads_mutex);
+// }
 
 uint64_t align_size(uint64_t size) {
   return (size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1);
@@ -283,12 +277,12 @@ void *allocate(uint64_t size) {
   if (!fully_constructed) {
     void *ptr = pool.head;
     uint64_t aligned_size = align_size(size);
-    pool.head = (char *)pool.head + aligned_size;
+    pool.head = ((char *)pool.head) + aligned_size;
     pool.available_size -= aligned_size;
     return ptr;
   }
 
-  add_thread_id(pthread_self());
+  // add_thread_id(pthread_self());
 
   uint64_t aligned_size = align_size(size);
   block *block = get_best_fit_block(aligned_size);
@@ -304,7 +298,7 @@ void *allocate(uint64_t size) {
       fabsf(ratio - 4.f / 3) <= 1e-6 || fabsf(ratio - 4 / 3.9f) <= 1e-6)
     scan_for_garbage();
 
-  return &block->next_block;
+  return ((char *)block->next_block) + sizeof(header);
 }
 
 void claim_block(block *free_block) {
@@ -313,7 +307,6 @@ void claim_block(block *free_block) {
 }
 
 void coalesce() {
-
   pthread_mutex_lock(&free_list_mutex);
 
   free_list = nullptr;
@@ -322,7 +315,6 @@ void coalesce() {
 
   block *current_block = pool.head;
   while ((void *)current_block < pool.current_break) {
-
     block *next_block = (block *)(((char *)current_block) + HEADER_SIZE +
                                   current_block->head.block_size);
 
@@ -395,7 +387,6 @@ void *reallocate(void *old_ptr, uint64_t new_size) {
 void scan_memory_section(void *start, void *end) {
   void **location = start;
   while (location < (void **)end) {
-
     if (*(void **)location > pool.head &&
         *(void **)location < pool.current_break) {
       block *block = (void *)(((char *)*(void **)location) - HEADER_SIZE);
@@ -414,20 +405,35 @@ void scan_for_garbage() {
 
   // check all memory locations such as bss,stack, etc for any likely block
   // allocation if any found mark them
-  scan_memory_section(&_etext, &_edata);
-  scan_memory_section(&_edata, &_end);
-  for (uint16_t i = 0; i < threads.count; i++) {
-    pthread_attr_t attribute;
-    pthread_getattr_np(threads.ids[i], &attribute);
-    scan_memory_section(attribute.stack_base,
-                        attribute.stack_base + attribute.stack_size);
-  }
+  scan_memory_section(&_edata, &_etext);
+  scan_memory_section(&_end, &_edata);
+  //   for (uint16_t i = 0; i < threads.count; i++) {
+  //     void *stack_base;
+  //     size_t stack_size;
+  //     pthread_attr_t attribute;
+  //     pthread_getattr_np(threads.ids[i], &attribute);
+  //     pthread_attr_getstack(&attribute, &stack_base, &stack_size);
+  //     // pthread_suspend(threads.id[i]);
+
+  //     void *start = (char *)stack_base
+  // #ifndef __arm__
+  //                   - stack_size
+  // #endif
+  //         ;
+
+  //     void *end = (char *)stack_base
+  // #ifdef __arm__
+  //                 + stack_size
+  // #endif
+  //         ;
+
+  //     scan_memory_section(start, end);
+  //   }
 
   // check the memory live blocks for block allocations if found mark as well
   pthread_mutex_lock(&pool_mutex);
   block *current_block = pool.head;
   while ((void *)current_block < pool.current_break) {
-
     block *next_block = (block *)(((char *)current_block) + HEADER_SIZE +
                                   current_block->head.block_size);
 
@@ -440,13 +446,11 @@ void scan_for_garbage() {
   // begin sweep
   current_block = pool.head;
   while ((void *)current_block < pool.current_break) {
-
     block *next_block = (block *)(((char *)current_block) + HEADER_SIZE +
                                   current_block->head.block_size);
 
     if (current_block->head.live) {
       if (!current_block->head.mark) {
-
         // printf("~%p\n", &current_block->next_block);
         claim_block(current_block);
       } else {
@@ -462,6 +466,36 @@ void scan_for_garbage() {
   // put windows aside for now
   // some windows stuff to consider
   // https://www.ired.team/miscellaneous-reversing-forensics/windows-kernel-internals/pe-file-header-parser-in-c++
+}
+
+int create_thread(pthread_t *_Nonnull thread_ptr,
+                  pthread_attr_t const *_Nullable thread_attr,
+                  void *_Nonnull (*_Nonnull start_routine)(void *_Nonnull),
+                  void *_Nullable input) {
+  void *thread_stack;
+  size_t thread_stack_size;
+  bool stack_is_set = true;
+
+  if (thread_attr) {
+    pthread_attr_getstack(thread_attr, &thread_stack, &thread_stack_size);
+    if (thread_stack && thread_stack > pool.head &&
+        thread_stack < pool.current_break) {
+      stack_is_set = true;
+    }
+  }
+
+  if (!stack_is_set) {
+    thread_stack_size = PTHREAD_STACK_MIN + 1 * MB;
+    thread_stack = allocate(thread_stack_size);
+    thread_attr = allocate(sizeof(*thread_ptr));
+    if (!thread_attr) {
+      pthread_attr_init((pthread_attr_t *)thread_attr);
+    }
+    pthread_attr_setstack((pthread_attr_t *)thread_attr, thread_stack,
+                          thread_stack_size);
+  }
+
+  return pthread_create(thread_ptr, thread_attr, start_routine, input);
 }
 
 // Unable to get malloc to work with library

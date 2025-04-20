@@ -1,9 +1,14 @@
 #ifndef MEM_H
 #define MEM_H
+#include <pthread.h>
 #include <stdint.h>
 
-void *allocate(uint64_t size);
-void claim(void *ptr);
-void *reallocate(void *oldptr, uint64_t size);
+void *_Nullable allocate(uint64_t size);
+void claim(void *_Nonnull ptr);
+void *_Nullable reallocate(void *_Nonnull oldptr, uint64_t size);
+int create_thread(pthread_t *_Nonnull thread_ptr,
+                  pthread_attr_t const *_Nullable thread_attr,
+                  void *_Nonnull (*_Nonnull start_routine)(void *_Nonnull),
+                  void *_Nullable input);
 
 #endif

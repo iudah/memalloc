@@ -11,19 +11,19 @@ void **bss_var;
 
 int main() {
   // allocate memory
-  // void *one_char = allocate(sizeof(char));
-  // void *one_int = allocate(sizeof(int));
-  // void *one_ptr = allocate(sizeof(void *));
-  // void *five_zero_three = allocate(503);
+  void *one_char = allocate(sizeof(char));
+  void *one_int = allocate(sizeof(int));
+  void *one_ptr = allocate(sizeof(void *));
+  void *five_zero_three = allocate(503);
 
-  // claim(one_char);
-  // claim(one_int);
-  // claim(five_zero_three);
+  claim(one_char);
+  claim(one_int);
+  claim(five_zero_three);
 
-  // void *two_four_four = allocate(244);
+  void *two_four_four = allocate(244);
 
-  // claim(two_four_four);
-  // claim(one_ptr);
+  claim(two_four_four);
+  claim(one_ptr);
 
   data_var = allocate(100);
   printf("%p\n", data_var);
