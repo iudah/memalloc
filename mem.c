@@ -102,7 +102,7 @@ bool deinitialize_pool() {
 }
 
 bool constructed = false;
-bool fully_constructed = false;
+// bool fully_constructed = false;
 pthread_t temp;
 static void __attribute__((constructor)) initialize_memalloc() {
   if (!constructed) {
@@ -117,21 +117,21 @@ static void __attribute__((constructor)) initialize_memalloc() {
     return;
   }
 
-  if (!fully_constructed) {
-    // threads.ids = &temp;
-    // threads.limit = 8;
-    // threads.ids = allocate(8 * sizeof(pthread_t));
-    // threads.ids[0] = temp;
+  // if (!fully_constructed) {
+  //   // threads.ids = &temp;
+  //   // threads.limit = 8;
+  //   // threads.ids = allocate(8 * sizeof(pthread_t));
+  //   // threads.ids[0] = temp;
 
-    fully_constructed = true;
-  }
+  //   fully_constructed = true;
+  // }
 }
 
 static void __attribute__((destructor)) deinitialize_memalloc() {
-  if (fully_constructed) {
-    fully_constructed = false;
-    return;
-  }
+  // if (fully_constructed) {
+  //   fully_constructed = false;
+  //   return;
+  // }
 
   if (constructed) {
     deinitialize_pool();
@@ -251,7 +251,9 @@ block *get_best_fit_block(uint64_t size) {
     if (best_fit && best_fit->head.block_size == size) {
       break;
     }
-    prev_block = current_block;
+    if (current_block->next_block != NULL) {
+      prev_block = current_block;
+    }
     current_block = current_block->next_block;
   }
 
@@ -274,13 +276,13 @@ void *allocate(uint64_t size) {
   if (!constructed) {
     initialize_memalloc();
   }
-  if (!fully_constructed) {
-    void *ptr = pool.head;
-    uint64_t aligned_size = align_size(size);
-    pool.head = ((char *)pool.head) + aligned_size;
-    pool.available_size -= aligned_size;
-    return ptr;
-  }
+  // if (!fully_constructed) {
+  //   void *ptr = pool.head;
+  //   uint64_t aligned_size = align_size(size);
+  //   pool.head = ((char *)pool.head) + aligned_size;
+  //   pool.available_size -= aligned_size;
+  //   return ptr;
+  // }
 
   // add_thread_id(pthread_self());
 
@@ -298,7 +300,7 @@ void *allocate(uint64_t size) {
       fabsf(ratio - 4.f / 3) <= 1e-6 || fabsf(ratio - 4 / 3.9f) <= 1e-6)
     scan_for_garbage();
 
-  return ((char *)block->next_block) + sizeof(header);
+  return ((char *)block) + sizeof(header);
 }
 
 void claim_block(block *free_block) {

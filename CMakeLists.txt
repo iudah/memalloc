@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(memalloc VERSION 2.0.1)
+project(memalloc VERSION 2.0.2)
 
 set(TARGET memalloc)
 
