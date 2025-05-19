@@ -43,5 +43,9 @@ int main() {
   puts("--------------------");
   scan_for_garbage();
 
+  for (int i = 0; i < 10000; i++) {
+    allocate(300);
+  }
+
   return 0;
 }
