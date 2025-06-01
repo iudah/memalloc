@@ -3,7 +3,6 @@
 #include <memory.h>
 #include <pthread.h>
 #include <setjmp.h>
-#define _GNU_SOURCE 1
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -248,10 +247,10 @@ void *allocate(uint64_t size) {
 
   if (init_stack_ptr == NULL) {
     volatile int a = 0;
-
+typedef void (*sig_seg_f_t)(int);
     init_stack_ptr = (void *)&a;
     volatile uintptr_t base = (volatile uintptr_t)init_stack_ptr;
-    sighandler_t sigsegv = signal(SIGSEGV, stack_base_signal);
+    sig_seg_f_t sigsegv = signal(SIGSEGV, stack_base_signal);
     if (setjmp(jmp_buffer) == 0)
       while (true) {
 
