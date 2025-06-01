@@ -25,9 +25,9 @@ jobs:
         shell: msys2 {0}
         run: |
           echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT";
-          sed -i 's|:/|\|' "$GITHUB_OUTPUT";
-          sed -i 's|:/|\|g' "$GITHUB_OUTPUT";
           echo "$GITHUB_WORKSPACE";
+          sed -i 's|:/|\|g' "$GITHUB_OUTPUT";
+          sed -i 's|/|\|g' "$GITHUB_OUTPUT";
 
       - name: Configure CMake
         run: >
