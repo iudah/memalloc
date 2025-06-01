@@ -18,7 +18,7 @@ jobs:
         with:
           msystem: UCRT64
           update: true
-          install: git mingw-w64-ucrt-x86_64-gcc cmake
+          install: git mingw-w64-ucrt-x86_64-gcc cmake make 
 
       - name: Set reusable strings
         id: strings
