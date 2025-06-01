@@ -3,6 +3,7 @@
 #include <memory.h>
 #include <pthread.h>
 #include <setjmp.h>
+#define _GNU_SOURCE 1
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
