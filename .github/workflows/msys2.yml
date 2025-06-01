@@ -24,7 +24,8 @@ jobs:
         id: strings
         shell: msys2 {0}
         run: |
-          echo "build-output-dir=${{ github.workspace }}/build"|sed "s#:\\\\#/#g"|sed "s#\\\\#/#g" >> "$GITHUB_OUTPUT";
+          echo "build-output-dir=/${{ github.workspace }}/build"|sed "s#:\\\\#/#g"|sed "s#\\\\#/#g" >> "$GITHUB_OUTPUT";
+          echo "build-src-dir=/${{ github.workspace }}"|sed "s#:\\\\#/#g"|sed "s#\\\\#/#g" >> "$GITHUB_OUTPUT";
 
       - name: Configure CMake
         run: >
@@ -32,7 +33,7 @@ jobs:
           -DCMAKE_CXX_COMPILER=mingw-w64-ucrt-x86_64-g++
           -DCMAKE_C_COMPILER=mingw-w64-ucrt-x86_64-gcc
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -S ${{ github.workspace }}
+          -S ${{ steps.strings.outputs.build-src-dir }}
 
       - name: Build
         run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
