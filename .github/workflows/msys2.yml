@@ -30,8 +30,8 @@ jobs:
       - name: Configure CMake
         run: >
           cmake -B ${{ steps.strings.outputs.build-output-dir }}
-          -DCMAKE_CXX_COMPILER=mingw-w64-ucrt-x86_64-g++
-          -DCMAKE_C_COMPILER=mingw-w64-ucrt-x86_64-gcc
+          -DCMAKE_CXX_COMPILER=g++
+          -DCMAKE_C_COMPILER=gcc
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -S ${{ steps.strings.outputs.build-src-dir }}
 
