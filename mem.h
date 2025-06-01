@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 void *_Nullable allocate(uint64_t size);
-void claim(void *_Nonnull ptr);
+bool claim(void *_Nonnull ptr);
 void *_Nullable reallocate(void *_Nonnull oldptr, uint64_t size);
 int create_thread(pthread_t *_Nonnull thread_ptr,
                   pthread_attr_t const *_Nullable thread_attr,
