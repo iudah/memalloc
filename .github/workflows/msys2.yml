@@ -40,9 +40,3 @@ jobs:
       - name: Test
         working-directory: ${{ steps.strings.outputs.build-output-dir }}
         run: ctest --output-on-failure --build-config ${{ matrix.build_type }}
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: build-${{ matrix.build_type }}
-          path: ${{ steps.strings.outputs.build-output-dir }}
