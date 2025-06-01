@@ -3,6 +3,8 @@
 #include <memory.h>
 #include <pthread.h>
 #include <setjmp.h>
+#include <signal.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
