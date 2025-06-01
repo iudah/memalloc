@@ -22,7 +22,7 @@ jobs:
 
       - name: Set reusable strings
         id: strings
-        shell: bash
+        shell: msys2 {0}
         run: |
           echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
