@@ -24,7 +24,7 @@ jobs:
         id: strings
         shell: msys2 {0}
         run: |
-          echo "build-test-dir=/${{ github.workspace }}/build" >> "$GITHUB_OUTPUT";
+          echo "build-test-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT";
           echo "build-output-dir=/${{ github.workspace }}/build"|sed "s#:\\\\#/#g"|sed "s#\\\\#/#g" >> "$GITHUB_OUTPUT";
           echo "build-src-dir=/${{ github.workspace }}"|sed "s#:\\\\#/#g"|sed "s#\\\\#/#g" >> "$GITHUB_OUTPUT";
 
