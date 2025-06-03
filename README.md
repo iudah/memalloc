@@ -14,8 +14,8 @@ Clone the repository and build:
 ```bash
 git clone https://github.com/iudah/memalloc.git
 cd memalloc
-cmake .
-make
+cmake -S . -B /build
+cmake --build ./build
 ```
 
 ## Resources
