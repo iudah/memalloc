@@ -24,6 +24,7 @@ jobs:
         id: strings
         shell: msys2 {0}
         run: |
+          echo "build-test-dir=/${{ github.workspace }}/build" >> "$GITHUB_OUTPUT";
           echo "build-output-dir=/${{ github.workspace }}/build"|sed "s#:\\\\#/#g"|sed "s#\\\\#/#g" >> "$GITHUB_OUTPUT";
           echo "build-src-dir=/${{ github.workspace }}"|sed "s#:\\\\#/#g"|sed "s#\\\\#/#g" >> "$GITHUB_OUTPUT";
 
@@ -39,5 +40,5 @@ jobs:
         run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
       - name: Test
-        working-directory: ${{ steps.strings.outputs.build-output-dir }}
+        working-directory: ${{ steps.strings.outputs.build-test-dir }}
         run: ctest --output-on-failure --build-config ${{ matrix.build_type }}
