@@ -13,6 +13,9 @@
 #else
 #include <windows.h>
 #include <winnt.h>
+#ifndef PTHREAD_STACK_MIN
+#define PTHREAD_STACK_MIN (4096)
+#endif
 #endif
 
 #define WORD_SIZE (8)
