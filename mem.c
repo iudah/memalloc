@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
