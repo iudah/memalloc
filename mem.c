@@ -441,6 +441,7 @@ void *reallocate(void *old_ptr, uint64_t new_size) {
 }
 
 void scan_memory_section(void *start, void *end) {
+  uint8_t inc = 1;
   uintptr_t current_address = (uintptr_t)start;
   uintptr_t end_address = (uintptr_t)end;
   while (current_address < end_address) {
@@ -462,13 +463,19 @@ void scan_memory_section(void *start, void *end) {
         volatile block *block =
             (struct block *)((uintptr_t)potential_ptr - HEADER_SIZE);
 
-        if (block->head.magic_number == MAGIC_NUMBER && block->head.live) {
-          block->head.mark = true;
+        if (block->head.magic_number == MAGIC_NUMBER) {
+          if (block->head.live) {
+            block->head.mark = true;
+          }
+          inc = sizeof(void *);
         }
       }
     }
 
-    current_address += sizeof(void *);
+    // `+ 1` causes UBSan to raise alignment error
+    // but `+ sizeof(void *)` causes skip in addresses
+    current_address += inc; // sizeof(void *);
+    inc = 1;
   }
 }
 
