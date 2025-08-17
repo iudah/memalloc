@@ -58,6 +58,8 @@ pthread_mutex_t pool_mutex;
 pthread_mutex_t free_list_mutex;
 pthread_mutex_t threads_mutex;
 
+uint64_t last_scan_size;
+
 block *free_list;
 
 void *allocate(uint64_t size);
@@ -316,16 +318,19 @@ void *allocate(uint64_t size) {
     init_stack_ptr = (void *)base;
   }
 
-  float ratio = (float)pool.available_size / pool.max_size;
+  if (last_scan_size != pool.available_size) {
+    float ratio = (float)pool.available_size / pool.max_size;
 #if 0
-  if (fabsf(ratio - .25f) <= 1e-6 || fabsf(ratio - .5f) <= 1e-6 ||
-      fabsf(ratio - .75f) <= 1e-6 || fabsf(ratio - 1.f) <= 1e-6)
+    if (fabsf(ratio - .25f) <= 1e-6 || fabsf(ratio - .5f) <= 1e-6 ||
+        fabsf(ratio - .75f) <= 1e-6 || fabsf(ratio - 1.f) <= 1e-6)
 #else
-  if (fabsf(ratio - .5f) <= 1e-6 || fabsf(ratio - .75f) <= 1e-6 ||
-      fabsf(ratio - .875f) <= 1e-6 || fabsf(ratio - 1.f) <= 1e-6)
+    if (fabsf(ratio - .5f) <= 1e-6 || fabsf(ratio - .75f) <= 1e-6 ||
+        fabsf(ratio - .875f) <= 1e-6 || fabsf(ratio - 1.f) <= 1e-6)
 #endif
-  {
-    scan_for_garbage();
+    {
+      last_scan_size = pool.available_size;
+      scan_for_garbage();
+    }
   }
 
   uint64_t aligned_size = align_size(size);
