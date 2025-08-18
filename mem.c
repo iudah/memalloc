@@ -8,7 +8,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+
 #ifndef _WIN32
 #include <sys/mman.h>
 #else
@@ -39,6 +42,7 @@ typedef struct {
   uint32_t magic_number;
   bool live;
   bool mark;
+  bool scanned;
 } header;
 
 typedef struct block {
@@ -130,8 +134,12 @@ bool initialize_pool() {
 
   pthread_mutex_lock(&pool_mutex);
 
-  pool.available_size = pool.max_size = POOL_SIZE;
   pool.head = pool.prehead = get_memory_pool(POOL_SIZE);
+  // check mem_pool success
+  if (!pool.head)
+    abort();
+
+  pool.available_size = pool.max_size = POOL_SIZE;
   pool.current_break = (uintptr_t)pool.head;
 
   pthread_mutex_unlock(&pool_mutex);
@@ -148,12 +156,18 @@ bool deinitialize_pool() {
     return true;
 
   pthread_mutex_lock(&pool_mutex);
+  uint64_t size = pool.max_size; // capture before zeroing
+  void *prehead = pool.prehead;
 
-  pool.available_size = pool.max_size = 0;
-  return_memory_pool(pool.prehead, pool.max_size);
+  pool.available_size = 0;
+  pool.max_size = 0;
+  pool.head = NULL;
+  pool.prehead = NULL;
+  pool.current_break = 0;
 
   pthread_mutex_unlock(&pool_mutex);
 
+  return_memory_pool(prehead, size);
   return true;
 }
 
@@ -196,21 +210,28 @@ uint64_t align_size(uint64_t size) {
 }
 
 block *create_block(uint64_t size) {
-  uint64_t aligned_size = align_size(size + HEADER_SIZE);
+  const uint64_t aligned_payload = align_size(size);
+  const uint64_t total = HEADER_SIZE + aligned_payload;
 
   pthread_mutex_lock(&pool_mutex);
 
+  uintptr_t end = (uintptr_t)pool.prehead + pool.max_size;
+  if (pool.current_break + total > end) {
+    pthread_mutex_unlock(&pool_mutex);
+    return NULL; // OOM
+  }
+
   block *block = (struct block *)pool.current_break;
-  block->head.block_size = size;
+  block->head.block_size = aligned_payload; // payload size
   block->head.live = true;
   block->head.mark = false;
   block->head.magic_number = MAGIC_NUMBER;
+  block->head.scanned = false;
 
-  pool.current_break += aligned_size;
-  pool.available_size -= aligned_size;
+  pool.current_break += total;
+  pool.available_size -= total;
 
   pthread_mutex_unlock(&pool_mutex);
-
   return block;
 }
 
@@ -220,10 +241,12 @@ void add_to_free_list(block *free_block) {
 
   pthread_mutex_lock(&free_list_mutex);
 
+  free_block->head.live = false;
+  free_block->head.mark = false;
+  free_block->head.scanned = false;
+
   free_block->next_block = free_list;
   free_list = free_block;
-  free_list->head.live = false;
-  free_list->head.mark = false;
 
   pthread_mutex_unlock(&free_list_mutex);
 }
@@ -235,63 +258,54 @@ block *fit_block(block *best_fit, uint64_t size) {
 
   uint64_t extra_size = best_fit->head.block_size - HEADER_SIZE - size;
 
-  if (best_fit->head.block_size == size || extra_size < align_size(WORD_SIZE)) {
+  if (extra_size < HEADER_SIZE + align_size(WORD_SIZE)) {
     return best_fit;
   }
 
-  block *extra_block = (block *)((uintptr_t)best_fit + HEADER_SIZE + size);
-  extra_block->head.block_size = extra_size;
-  extra_block->head.live = true;
-  extra_block->head.magic_number = MAGIC_NUMBER;
+  // Split
+  block *extra = (block *)((uintptr_t)best_fit + HEADER_SIZE + size);
+  extra->head.block_size = extra_size - HEADER_SIZE;
+  extra->head.mark = false;
+  extra->head.scanned = false;
+  extra->head.magic_number = MAGIC_NUMBER;
+  extra->head.live = true; // add_to_free_list would not add block if not live
+
+  add_to_free_list(extra);
 
   best_fit->head.block_size = size;
   best_fit->head.live = true;
   best_fit->head.mark = false;
-
-  add_to_free_list(extra_block);
   return best_fit;
 }
 
 block *get_best_fit_block(uint64_t size) {
-  if (!free_list) {
-    return NULL;
-  }
-
   pthread_mutex_lock(&free_list_mutex);
 
-  block *best_fit = NULL;
-  block *prev_block = NULL;
-  block *current_block = free_list;
+  block *best = NULL, *best_prev = NULL;
+  block *prev = NULL, *cur = free_list;
 
-  while (current_block->next_block) {
-    if (!best_fit) {
-      if (current_block->head.block_size >= size) {
-        best_fit = current_block;
-      }
-    } else {
-      if (current_block->head.block_size >= size &&
-          current_block->head.block_size < best_fit->head.block_size) {
-        best_fit = current_block;
-      }
-      if (best_fit->head.block_size == size)
-        break;
+  while (cur) {
+    if (cur->head.block_size >= size &&
+        (!best || cur->head.block_size < best->head.block_size)) {
+      best = cur;
+      best_prev = prev;
+      if (cur->head.block_size == size)
+        break; // exact fit early-exit
     }
-    prev_block = current_block;
-    current_block = current_block->next_block;
+    prev = cur;
+    cur = cur->next_block;
   }
 
-  if (best_fit != NULL) {
-    if (prev_block != NULL) {
-      prev_block->next_block = best_fit->next_block;
-    } else {
-      free_list = best_fit->next_block;
-    }
-    best_fit->head.live = true;
+  if (best) {
+    if (best_prev)
+      best_prev->next_block = best->next_block;
+    else
+      free_list = best->next_block;
+    best->head.live = true; // allocated now
   }
 
   pthread_mutex_unlock(&free_list_mutex);
-
-  return fit_block(best_fit, size);
+  return fit_block(best, size);
 }
 
 void *allocate(uint64_t size) {
@@ -300,6 +314,11 @@ void *allocate(uint64_t size) {
   }
 
   if (init_stack_ptr == NULL) {
+#ifdef _WIN32
+    win_pe_hdr();
+    NT_TIB *tib = (NT_TIB *)NtCurrentTeb();
+    init_stack_ptr = tib->StackBase;
+#else
     volatile int a = 0;
     typedef void (*sig_seg_f_t)(int);
     init_stack_ptr = (void *)&a;
@@ -316,6 +335,7 @@ void *allocate(uint64_t size) {
       }
     signal(SIGSEGV, sigsegv);
     init_stack_ptr = (void *)base;
+#endif
   }
 
   if (last_scan_size != pool.available_size) {
@@ -338,6 +358,9 @@ void *allocate(uint64_t size) {
   if (!block) {
     block = create_block(aligned_size);
   }
+
+  block->next_block = NULL;
+
   if (!block) {
     return NULL;
   }
@@ -346,68 +369,73 @@ void *allocate(uint64_t size) {
 }
 
 void claim_block(block *free_block) {
-  if (free_block->head.live)
+  if (free_block->head.live && free_block->head.magic_number == MAGIC_NUMBER)
     add_to_free_list(free_block);
 }
 
+bool is_valid_block_address(uintptr_t address) {
+  return address <= pool.current_break &&
+         (address + sizeof(struct block)) <= pool.current_break;
+}
+
+static void recompute_available_size() {
+  uint64_t avail = 0;
+  uintptr_t cur = (uintptr_t)pool.head;
+  while (cur < pool.current_break) {
+    block *b = (block *)cur;
+    uint64_t total = HEADER_SIZE + b->head.block_size;
+    if (!b->head.live)
+      avail += total;
+    cur += total;
+  }
+  pool.available_size = avail;
+}
+
 void coalesce() {
+  pthread_mutex_lock(&pool_mutex);
   pthread_mutex_lock(&free_list_mutex);
 
   free_list = NULL;
 
-  pthread_mutex_lock(&pool_mutex);
+  uintptr_t current = (uintptr_t)pool.head;
+  while (current < pool.current_break) {
+    block *cur_blk = (block *)current;
+    uintptr_t next = current + HEADER_SIZE + cur_blk->head.block_size;
 
-  uintptr_t current_address = (uintptr_t)pool.head;
-  while (current_address <= pool.current_break &&
-         current_address + sizeof(struct block) <= pool.current_break) {
-    block *current_block = (block *)current_address;
-    uintptr_t next_address =
-        current_address + HEADER_SIZE + current_block->head.block_size;
-
-    if (next_address >= pool.current_break) {
-      if (!current_block->head.live && current_block != free_list) {
-        current_block->next_block = free_list;
-        free_list = current_block;
+    if (!cur_blk->head.live) {
+      // Merge forward while next is also free
+      while (next < pool.current_break) {
+        block *nxt_blk = (block *)next;
+        if (nxt_blk->head.live)
+          break;
+        nxt_blk->next_block = NULL;
+        cur_blk->head.block_size += HEADER_SIZE + nxt_blk->head.block_size;
+        next += HEADER_SIZE + nxt_blk->head.block_size;
       }
-      break;
+
+      cur_blk->head.live = true; // ensure add_to_free_list adds block
+      // push this (possibly merged) free block to the free list
+      add_to_free_list(cur_blk);
     }
 
-    if (current_block->head.live) {
-      current_address = next_address;
-      continue;
-    }
-
-    if (next_address <= pool.current_break &&
-        next_address + sizeof(struct block) <= pool.current_break) {
-
-      block *next_block = (block *)next_address;
-
-      if (next_block->head.live) {
-        current_block->next_block = free_list;
-        free_list = current_block;
-        current_address =
-            next_address + HEADER_SIZE + next_block->head.block_size;
-
-        continue;
-      }
-      current_block->head.block_size +=
-          next_block->head.block_size + HEADER_SIZE;
-    } else {
-      break;
-    }
+    current = next;
   }
-  pthread_mutex_unlock(&pool_mutex);
+
+  recompute_available_size();
 
   pthread_mutex_unlock(&free_list_mutex);
+  pthread_mutex_unlock(&pool_mutex);
 }
 
 bool claim(void *ptr) {
+
   if (!ptr)
     return false;
 
   pthread_mutex_lock(&pool_mutex);
 
-  if (ptr < pool.head || (uintptr_t)ptr > pool.current_break) {
+  if (ptr < (void *)((uintptr_t)pool.head + HEADER_SIZE) ||
+      (uintptr_t)ptr >= pool.current_break) {
     pthread_mutex_unlock(&pool_mutex);
     return false;
   }
@@ -416,8 +444,6 @@ bool claim(void *ptr) {
   block *free_block = (block *)(((char *)ptr) - HEADER_SIZE);
 
   claim_block(free_block);
-
-  coalesce();
 
   return true;
 }
@@ -441,6 +467,8 @@ void *reallocate(void *old_ptr, uint64_t new_size) {
 
   memcpy(new_ptr, old_ptr,
          min_u64(old_block->head.block_size, new_block->head.block_size));
+
+  claim(old_ptr); // Free old block
 
   return new_ptr;
 }
@@ -559,21 +587,28 @@ void scan_for_garbage() {
 
   // check the memory live blocks for block allocations if found mark as well
   pthread_mutex_lock(&pool_mutex);
-  uintptr_t current_address = (uintptr_t)pool.head;
-  while (current_address <= pool.current_break &&
-         (current_address + sizeof(struct block)) <= pool.current_break) {
-    block *current_block = (block *)current_address;
+  uintptr_t current_address;
 
-    uintptr_t next_address =
-        current_address + HEADER_SIZE + current_block->head.block_size;
+  bool changed;
+  do {
+    changed = false;
+    current_address = (uintptr_t)pool.head;
+    while (is_valid_block_address(current_address)) {
+      block *current_block = (block *)current_address;
+      uintptr_t next_address =
+          current_address + HEADER_SIZE + current_block->head.block_size;
 
-    if (current_block->head.magic_number == MAGIC_NUMBER &&
-        current_block->head.live && current_block->head.mark) {
-      scan_memory_section((void *)(current_address + HEADER_SIZE),
-                          (void *)next_address);
+      if (current_block->head.magic_number == MAGIC_NUMBER &&
+          current_block->head.live && current_block->head.mark &&
+          !current_block->head.scanned) {
+        scan_memory_section((void *)(current_address + HEADER_SIZE),
+                            (void *)next_address);
+        current_block->head.scanned = true;
+        changed = true;
+      }
+      current_address = next_address;
     }
-    current_address = next_address;
-  }
+  } while (changed);
 
   // begin sweep
   current_address = (uintptr_t)pool.head;
@@ -585,12 +620,13 @@ void scan_for_garbage() {
 
     if (current_block->head.live && !current_block->head.mark) {
       claim_block(current_block);
-    } else {
-      current_block->head.mark = false;
+    } else if (current_block->head.live) {
+      current_block->head.mark = false; // Reset for next GC
     }
-
+    current_block->head.scanned = false;
     current_address = next_address;
   }
+
   pthread_mutex_unlock(&pool_mutex);
 
   coalesce();
