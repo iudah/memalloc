@@ -4,6 +4,7 @@
 #ifndef __clang__
 #define _Nonnull
 #define _Nullable
+#define constructor(x) __constructor__
 #endif
 
 #include <pthread.h>

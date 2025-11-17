@@ -74,6 +74,8 @@ void *reallocate(void *old_ptr, uint64_t new_size);
 void scan_for_garbage();
 
 #ifdef _WIN32
+bool win_pe_hdr();
+
 // Allocate anonymous shared memory using system paging file
 void *win_mmap_anon(size_t size)
 {
