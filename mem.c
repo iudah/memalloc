@@ -402,29 +402,64 @@ void coalesce() {
   pthread_mutex_lock(&pool_mutex);
   pthread_mutex_lock(&free_list_mutex);
 
+  // Clear list to rebuild it completely
   free_list = NULL;
 
   uintptr_t current = (uintptr_t)pool.head;
+
   while (current < pool.current_break) {
     block *cur_blk = (block *)current;
+
+    // Ensure block size is valid to prevent infinite loops
+    if (cur_blk->head.block_size == 0 &&
+        (current + HEADER_SIZE < pool.current_break)) {
+      // Force advance if we hit a zero-size block (corruption defense)
+      current += HEADER_SIZE;
+      continue;
+    }
+
+    // Calculate where the NEXT block currently starts
     uintptr_t next = current + HEADER_SIZE + cur_blk->head.block_size;
 
     if (!cur_blk->head.live) {
       // Merge forward while next is also free
       while (next < pool.current_break) {
+
+        // Ensure the header we are about to read fits in memory
+        if (next + HEADER_SIZE > pool.current_break) {
+          break;
+        }
+
         block *nxt_blk = (block *)next;
         if (nxt_blk->head.live)
-          break;
-        nxt_blk->next_block = NULL;
-        cur_blk->head.block_size += HEADER_SIZE + nxt_blk->head.block_size;
-        next += HEADER_SIZE + nxt_blk->head.block_size;
+          break; // Stop if next block is in use
+
+        // The space we gain is the next block's header + its payload
+        uint64_t size_gained = HEADER_SIZE + nxt_blk->head.block_size;
+        uint64_t new_payload_size = cur_blk->head.block_size + size_gained;
+
+        // CRITICAL BOUNDARY CHECK
+        // Address of Header + Header Size + New Payload Size must be <= Break
+        if ((uintptr_t)cur_blk + HEADER_SIZE + new_payload_size >
+            pool.current_break) {
+          break; // Prevent overflow
+        }
+
+        // Execute Merge
+        nxt_blk->next_block = NULL; // Clear old pointer
+        cur_blk->head.block_size = new_payload_size;
+
+        // Advance 'next' to the block AFTER the one we just consumed
+        next += size_gained;
       }
 
-      cur_blk->head.live = true; // ensure add_to_free_list adds block
-      // push this (possibly merged) free block to the free list
+      // Prepare for insertion into free list
+      // (add_to_free_list requires live=true to accept, then flips it to false)
+      cur_blk->head.live = true;
       add_to_free_list(cur_blk);
     }
 
+    // Advance current to the start of the next distinct block
     current = next;
   }
 
