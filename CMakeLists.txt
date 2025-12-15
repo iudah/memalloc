@@ -13,7 +13,7 @@ option(ENABLE_SANITIZERS "Enable Address and Undefined Behaviours Sanitizers" OF
 message(STATUS "Compiler: ${CMAKE_C_COMPILER_ID}")
 message(STATUS "System Processor: ${CMAKE_SYSTEM_PROCESSOR}")
 
-add_library(${TARGET} STATIC mem.c)
+add_library(${TARGET} STATIC  mem_alloc.c  mem_core.c  mem_gc.c  mem_platform.c)
 
 target_include_directories(${TARGET}
     PUBLIC

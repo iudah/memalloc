@@ -8,6 +8,7 @@
 #endif
 
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 void *_Nullable allocate(uint64_t size);
