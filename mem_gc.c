@@ -49,9 +49,12 @@ void scan_memory_section(void *start, void *end) {
 }
 
 void claim_block(block *free_block) {
-  if (block_is_live(free_block) &&
-      free_block->head.magic_number == MAGIC_NUMBER)
-    add_to_free_list(free_block);
+  if (!block_is_live(free_block) ||
+      free_block->head.magic_number != MAGIC_NUMBER)
+    return;
+
+  free_block->head.flags = 0;
+  add_to_free_list(free_block);
 }
 
 // --- Main GC Driver ---
@@ -75,8 +78,6 @@ void scan_for_garbage() {
   // Mark Phase
   pthread_mutex_lock(&pool_mutex);
 
-  block *sweep_list = NULL;
-
   while (true) {
     pthread_mutex_lock(&mark_queue_mutex);
     block *current_blk = mark_queue_pop();
@@ -93,9 +94,6 @@ void scan_for_garbage() {
                                    current_blk->head.block_size);
 
       scan_memory_section(payload_start, payload_end);
-      block_mark_scanned(current_blk);
-
-      linkedlist_push(&sweep_list, current_blk);
     }
   }
 
@@ -117,7 +115,6 @@ void scan_for_garbage() {
       } else {
         block_clear_marked(current_block); // Keep it, clear flag for next GC
       }
-      block_clear_scanned(current_block);
     }
     current_address = next_address;
   }

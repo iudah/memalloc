@@ -33,12 +33,15 @@ void *allocate(uint64_t size) {
   uint64_t aligned_size = align_size(size);
   block *blk = get_best_fit_block(aligned_size);
 
-  if (!blk) {
+  if (!blk || blk->head.magic_number != MAGIC_NUMBER) {
     blk = create_block(aligned_size);
   }
 
   if (!blk)
     return NULL;
+
+  blk->head.flags = 0;
+  block_mark_live(blk);
 
   block_set_next_block(blk, NULL);
   return (void *)((uintptr_t)blk + HEADER_SIZE);
