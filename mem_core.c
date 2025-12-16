@@ -3,18 +3,9 @@
 // -----------------------------------------------------------
 #include "mem_internal.h"
 #include <stddef.h>
+#include <sys/types.h>
 
-#define MINIMUM_BLOCK_SIZE ((sizeof(block) + WORD_SIZE - 1) & ~(WORD_SIZE - 1))
 #define BLOCK_AT(offset) ((block *)((uintptr_t)pool.head + (offset)))
-
-#define SET_BIT(x, n) ((x) |= (UINT64_C(1) << (n)))
-#define CLEAR_BIT(x, n) ((x) &= ~(UINT64_C(1) << (n)))
-#define GET_BIT(x, n) (((x) & (UINT64_C(1) << (n))) != 0)
-
-#define FLAG_FREE 0
-#define FLAG_LIVE 1
-#define FLAG_MARK 2
-#define FLAG_SCAN 3
 
 struct memory_pool pool;
 pthread_mutex_t pool_mutex;
@@ -33,17 +24,26 @@ uint64_t align_size(uint64_t size) {
 block *block_get_next_block(block *blk) {
   if (!blk)
     return NULL;
-  return blk && blk->head.next_offset ? BLOCK_AT(blk->head.next_offset) : NULL;
+  block *nxt_blk =
+      blk && blk->head.next_offset ? BLOCK_AT(blk->head.next_offset) : NULL;
+
+  if (nxt_blk == blk) {
+    // This block is pointing back to itself
+    return NULL;
+  }
+
+  return nxt_blk;
 }
 
-void block_set_next_block(block *blk, block *next) {
-  if (!blk)
-    return;
+bool block_set_next_block(block *blk, block *next) {
+  if (!blk || blk == next)
+    return false;
   if (!next) {
     blk->head.next_offset = 0;
   } else {
     blk->head.next_offset = (uintptr_t)next - (uintptr_t)pool.head;
   }
+  return true;
 }
 
 bool linkedlist_push(block **list, block *blk) {
@@ -104,17 +104,14 @@ block *fit_block(block *best_fit, uint64_t size) {
   block *extra = (block *)((uintptr_t)best_fit + HEADER_SIZE + size);
   extra->head.block_size = extra_size - HEADER_SIZE;
   extra->head.magic_number = MAGIC_NUMBER;
-  block_clear_marked(extra);
-  block_clear_scanned(extra);
-  block_mark_live(extra); // add_to_free_list would not add block if not live
-  block_clear_free(extra);
 
-  freelist_push(extra);
+  extra->head.flags = 0;
+
+  add_to_free_list(extra);
 
   best_fit->head.block_size = size;
-  block_mark_live(best_fit);
-  block_clear_marked(best_fit);
-  block_clear_free(best_fit);
+
+  best_fit->head.flags = 0;
 
   return best_fit;
 }
@@ -148,8 +145,6 @@ block *get_best_fit_block(uint64_t size) {
       block_set_next_block(best_prev, block_get_next_block(best));
     else
       free_list = block_get_next_block(best);
-
-    block_mark_live(best);
   }
 
   pthread_mutex_unlock(&free_list_mutex);
@@ -176,9 +171,7 @@ block *create_block(uint64_t size) {
 
   block *block = (struct block *)pool.current_break;
   block->head.block_size = aligned_payload; // payload size
-  block_mark_live(block);
-  block_clear_marked(block);
-  block_clear_scanned(block);
+
   block->head.magic_number = MAGIC_NUMBER;
 
   pool.current_break += total;
@@ -257,8 +250,7 @@ void coalesce() {
       }
 
       // Prepare for insertion into free list
-      // (add_to_free_list requires live=true to accept, then flips it to false)
-      block_mark_live(cur_blk);
+      cur_blk->head.flags = 0;
       add_to_free_list(cur_blk);
     }
 
