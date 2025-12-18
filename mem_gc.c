@@ -7,6 +7,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef DEBUG
+#include <stdio.h>
+#endif
+
 // --- Global Scan State ---
 block *mark_queue;
 
@@ -54,11 +58,16 @@ void claim_block(block *free_block) {
     return;
 
   free_block->head.flags = 0;
-  add_to_free_list(free_block);
+  block_mark_free(free_block);
 }
 
 // --- Main GC Driver ---
 void scan_for_garbage() {
+
+#ifdef DEBUG
+  printf("%s\n", __FUNCTION__);
+#endif
+
 // Scan Globals (BSS/Data)
 #ifdef _WIN32
   scan_memory_section(_bss_start, _bss_end);
@@ -111,9 +120,11 @@ void scan_for_garbage() {
 
       // If it's LIVE but NOT MARKED, it is Garbage!
       if (!block_is_marked(current_block)) {
-        claim_block(current_block); // Free it
+        current_block->head.flags = 0;
+        block_mark_free(current_block); // Free it
       } else {
-        block_clear_marked(current_block); // Keep it, clear flag for next GC
+        current_block->head.flags = 0;
+        block_mark_live(current_block); // Keep it for next GC
       }
     }
     current_address = next_address;

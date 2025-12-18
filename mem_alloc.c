@@ -2,7 +2,12 @@
 // mem_alloc.c
 // -----------------------------------------------------------
 #include "mem_internal.h"
+#include <assert.h>
+#include <inttypes.h>
 #include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 uint64_t last_scan_size;
@@ -10,6 +15,10 @@ volatile void *init_stack_ptr;
 
 // --- Allocation API ---
 void *allocate(uint64_t size) {
+
+#ifdef DEBUG
+  printf("%s: %" PRIu64 "\n", __FUNCTION__, size);
+#endif
 
   if (init_stack_ptr == NULL) {
     initialize_stack_ptr();
@@ -35,6 +44,8 @@ void *allocate(uint64_t size) {
 
   if (!blk || blk->head.magic_number != MAGIC_NUMBER) {
     blk = create_block(aligned_size);
+  } else {
+    assert(blk->head.magic_number == MAGIC_NUMBER);
   }
 
   if (!blk)
@@ -44,10 +55,16 @@ void *allocate(uint64_t size) {
   block_mark_live(blk);
 
   block_set_next_block(blk, NULL);
+
+#ifdef DEBUG
+  printf("%s %p\n", __FUNCTION__, (void *)((uintptr_t)blk + HEADER_SIZE));
+#endif
+
   return (void *)((uintptr_t)blk + HEADER_SIZE);
 }
 
 bool claim(void *ptr) {
+
   if (!ptr)
     return false;
 
@@ -59,16 +76,34 @@ bool claim(void *ptr) {
   }
   pthread_mutex_unlock(&pool_mutex);
 
-  block *free_block = (block *)(((char *)ptr) - HEADER_SIZE);
+  block *free_block = (block *)(((uintptr_t)ptr) - HEADER_SIZE);
+
+#ifdef DEBUG
+  printf("%s: %" PRIu64 " %p\n", __FUNCTION__, free_block->head.block_size,
+         ptr);
+#endif
+
   claim_block(free_block);
   return true;
 }
 
 void *reallocate(void *old_ptr, uint64_t new_size) {
+
   if (!old_ptr)
     return NULL;
 
-  block *old_block = (block *)(((char *)old_ptr) - HEADER_SIZE);
+  block *old_block = (block *)(((uintptr_t)old_ptr) - HEADER_SIZE);
+
+#ifdef DEBUG
+  printf("%s: %" PRIu64 " %p\n", __FUNCTION__, old_block->head.block_size,
+         old_ptr);
+#endif
+
+  assert(old_block->head.magic_number == MAGIC_NUMBER);
+  if (old_block->head.magic_number != MAGIC_NUMBER) {
+    abort();
+    return NULL;
+  }
   if (old_block->head.block_size == align_size(new_size))
     return old_ptr;
 
@@ -76,7 +111,7 @@ void *reallocate(void *old_ptr, uint64_t new_size) {
   if (!new_ptr)
     return NULL;
 
-  block *new_block = (block *)(((char *)new_ptr) - HEADER_SIZE);
+  block *new_block = (block *)(((uintptr_t)new_ptr) - HEADER_SIZE);
 
   uint64_t copy_size = (old_block->head.block_size < new_block->head.block_size)
                            ? old_block->head.block_size

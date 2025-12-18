@@ -2,8 +2,15 @@
 // mem_core.c
 // -----------------------------------------------------------
 #include "mem_internal.h"
+#include <assert.h>
+#include <inttypes.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <sys/types.h>
+
+#ifdef DEBUG
+#include <stdio.h>
+#endif
 
 #define BLOCK_AT(offset) ((block *)((uintptr_t)pool.head + (offset)))
 
@@ -17,6 +24,8 @@ block *free_list;
 
 // --- Math Helpers ---
 uint64_t align_size(uint64_t size) {
+  if (size == 0)
+    return WORD_SIZE;
   return (size + (WORD_SIZE - 1)) & ~(WORD_SIZE - 1);
 }
 
@@ -72,6 +81,7 @@ bool freelist_push(block *blk) {
   assert(!block_is_live(blk));
 #endif
 
+  block_set_next_block(blk, NULL);
   block_mark_free(blk);
   return linkedlist_push(&free_list, blk);
 }
@@ -94,24 +104,31 @@ block *fit_block(block *best_fit, uint64_t size) {
     return NULL;
   }
 
-  uint64_t extra_size = best_fit->head.block_size - HEADER_SIZE - size;
+  auto extra_payload_min = align_size(WORD_SIZE);
 
-  if (extra_size < HEADER_SIZE + align_size(WORD_SIZE)) {
+  if (best_fit->head.block_size <= (size + HEADER_SIZE + extra_payload_min)) {
+    best_fit->head.flags = 0;
+    block_mark_live(best_fit);
+    block_set_next_block(best_fit, NULL);
     return best_fit;
   }
 
+  uint64_t extra_size = best_fit->head.block_size - size - HEADER_SIZE;
+
   // Split
   block *extra = (block *)((uintptr_t)best_fit + HEADER_SIZE + size);
-  extra->head.block_size = extra_size - HEADER_SIZE;
+  extra->head.block_size = extra_size;
   extra->head.magic_number = MAGIC_NUMBER;
 
   extra->head.flags = 0;
-
+  block_mark_free(extra);
+  block_set_next_block(extra, NULL);
   add_to_free_list(extra);
 
   best_fit->head.block_size = size;
-
   best_fit->head.flags = 0;
+  block_mark_live(best_fit);
+  block_set_next_block(best_fit, NULL);
 
   return best_fit;
 }
@@ -124,10 +141,10 @@ block *get_best_fit_block(uint64_t size) {
   block *prev = NULL, *cur = free_list;
 
   while (cur) {
-    if ((uintptr_t)cur < (uintptr_t)init_stack_ptr &&
-        cur->head.magic_number != MAGIC_NUMBER) {
+    if (!is_valid_block_address((uintptr_t)cur))
       break;
-    }
+    if (cur->head.magic_number != MAGIC_NUMBER)
+      break;
 
     if (cur->head.block_size >= size &&
         (!best || cur->head.block_size < best->head.block_size)) {
@@ -178,6 +195,11 @@ block *create_block(uint64_t size) {
   pool.available_size -= total;
 
   pthread_mutex_unlock(&pool_mutex);
+
+  block->head.flags = 0;
+  block_mark_live(block);
+  block_set_next_block(block, NULL);
+
   return block;
 }
 
@@ -251,6 +273,9 @@ void coalesce() {
 
       // Prepare for insertion into free list
       cur_blk->head.flags = 0;
+#ifdef DEBUG
+      assert(!block_is_live(cur_blk));
+#endif
       add_to_free_list(cur_blk);
     }
 
@@ -271,6 +296,22 @@ void add_to_free_list_unsafe(block *free_block) { freelist_push(free_block); }
 
 // The public version handles the lock
 void add_to_free_list(block *free_block) {
+
+#ifdef DEBUG
+  printf("\n%s: %" PRIu64 " %p\n", __FUNCTION__, free_block->head.block_size,
+         (void *)((uintptr_t)free_block + HEADER_SIZE));
+#endif
+
+  // assert(free_block->head.block_size <= 62335);
+  // if (free_block->head.block_size > 62335) {
+  //   abort();
+  //   return;
+  // }
+  assert(free_block->head.magic_number == MAGIC_NUMBER);
+  if (free_block->head.magic_number != MAGIC_NUMBER) {
+    abort();
+    return;
+  }
   pthread_mutex_lock(&free_list_mutex);
   add_to_free_list_unsafe(free_block);
   pthread_mutex_unlock(&free_list_mutex);
