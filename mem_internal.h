@@ -30,20 +30,29 @@
 #endif
 #define POOL_SIZE (POOL_SIZE_IN_MB * MB)
 
+#ifndef __clang__
+#define _Nonnull
+#define _Nullable
+#define constructor(x) __constructor__
+#endif
+
 // --- Data Structures ---
-typedef struct {
+typedef struct
+{
   uint64_t block_size;
   uint32_t next_offset;
   uint8_t magic_number;
   uint8_t flags;
 } header;
 
-typedef struct block {
+typedef struct block
+{
   header head;
   uint8_t payload;
 } block;
 
-struct memory_pool {
+struct memory_pool
+{
   void *head;
   void *prehead;
   uintptr_t current_break;
@@ -63,28 +72,35 @@ extern volatile void *init_stack_ptr;
 
 // --- Inline Bit Manipulation Helpers ---
 
-static inline bool block_is_live(const block *blk) {
+static inline bool block_is_live(const block *blk)
+{
   return GET_BIT(blk->head.flags, FLAG_LIVE);
 }
-static inline bool block_is_marked(const block *blk) {
+static inline bool block_is_marked(const block *blk)
+{
   return GET_BIT(blk->head.flags, FLAG_MARK);
 }
 
-static inline void block_mark_live(block *blk) {
+static inline void block_mark_live(block *blk)
+{
   SET_BIT(blk->head.flags, FLAG_LIVE);
 }
-static inline void block_mark_marked(block *blk) {
+static inline void block_mark_marked(block *blk)
+{
   SET_BIT(blk->head.flags, FLAG_MARK);
 }
 
-static inline void block_clear_live(block *blk) {
+static inline void block_clear_live(block *blk)
+{
   CLEAR_BIT(blk->head.flags, FLAG_LIVE);
 }
-static inline void block_clear_marked(block *blk) {
+static inline void block_clear_marked(block *blk)
+{
   CLEAR_BIT(blk->head.flags, FLAG_MARK);
 }
 
-static inline bool block_is_free(const block *blk) {
+static inline bool block_is_free(const block *blk)
+{
   return !block_is_live(blk);
 }
 static inline void block_mark_free(block *blk) { block_clear_live(blk); }

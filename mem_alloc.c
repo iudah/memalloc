@@ -9,22 +9,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+
+#ifdef _WIN32
+#ifndef PTHREAD_STACK_MIN
+#define PTHREAD_STACK_MIN (4096)
+#endif
+#endif
 
 uint64_t last_scan_size;
 volatile void *init_stack_ptr;
 
 // --- Allocation API ---
-void *allocate(uint64_t size) {
+void *allocate(uint64_t size)
+{
 
 #ifdef DEBUG
   printf("%s: %" PRIu64 "\n", __FUNCTION__, size);
 #endif
 
-  if (init_stack_ptr == NULL) {
+  if (init_stack_ptr == NULL)
+  {
     initialize_stack_ptr();
   }
 
-  if (last_scan_size != pool.available_size) {
+  if (last_scan_size != pool.available_size)
+  {
     float ratio = (float)pool.available_size / pool.max_size;
 #if 0
     if (fabsf(ratio - .25f) <= 1e-6 || fabsf(ratio - .5f) <= 1e-6 ||
@@ -42,9 +52,12 @@ void *allocate(uint64_t size) {
   uint64_t aligned_size = align_size(size);
   block *blk = get_best_fit_block(aligned_size);
 
-  if (!blk || blk->head.magic_number != MAGIC_NUMBER) {
+  if (!blk || blk->head.magic_number != MAGIC_NUMBER)
+  {
     blk = create_block(aligned_size);
-  } else {
+  }
+  else
+  {
     assert(blk->head.magic_number == MAGIC_NUMBER);
   }
 
@@ -63,14 +76,16 @@ void *allocate(uint64_t size) {
   return (void *)((uintptr_t)blk + HEADER_SIZE);
 }
 
-bool claim(void *ptr) {
+bool claim(void *ptr)
+{
 
   if (!ptr)
     return false;
 
   pthread_mutex_lock(&pool_mutex);
   if (ptr < (void *)((uintptr_t)pool.head + HEADER_SIZE) ||
-      (uintptr_t)ptr >= pool.current_break) {
+      (uintptr_t)ptr >= pool.current_break)
+  {
     pthread_mutex_unlock(&pool_mutex);
     return false;
   }
@@ -87,7 +102,8 @@ bool claim(void *ptr) {
   return true;
 }
 
-void *reallocate(void *old_ptr, uint64_t new_size) {
+void *reallocate(void *old_ptr, uint64_t new_size)
+{
 
   if (!old_ptr)
     return NULL;
@@ -100,7 +116,8 @@ void *reallocate(void *old_ptr, uint64_t new_size) {
 #endif
 
   assert(old_block->head.magic_number == MAGIC_NUMBER);
-  if (old_block->head.magic_number != MAGIC_NUMBER) {
+  if (old_block->head.magic_number != MAGIC_NUMBER)
+  {
     abort();
     return NULL;
   }
@@ -128,24 +145,29 @@ void *reallocate(void *old_ptr, uint64_t new_size) {
 int create_thread(pthread_t *_Nonnull thread_ptr,
                   pthread_attr_t const *_Nullable thread_attr,
                   void *_Nonnull (*_Nonnull start_routine)(void *_Nonnull),
-                  void *_Nullable input) {
+                  void *_Nullable input)
+{
   void *thread_stack;
   size_t thread_stack_size;
   bool stack_is_set = true;
 
-  if (thread_attr) {
+  if (thread_attr)
+  {
     pthread_attr_getstack(thread_attr, &thread_stack, &thread_stack_size);
     if (thread_stack && thread_stack > pool.head &&
-        (uintptr_t)thread_stack < pool.current_break) {
+        (uintptr_t)thread_stack < pool.current_break)
+    {
       stack_is_set = true;
     }
   }
 
-  if (!stack_is_set) {
+  if (!stack_is_set)
+  {
     thread_stack_size = PTHREAD_STACK_MIN + 1 * MB;
     thread_stack = allocate(thread_stack_size);
     thread_attr = allocate(sizeof(*thread_attr));
-    if (!thread_attr) {
+    if (!thread_attr)
+    {
       return -1;
     }
     pthread_attr_init((pthread_attr_t *)thread_attr);
@@ -159,7 +181,8 @@ int create_thread(pthread_t *_Nonnull thread_ptr,
 // --- Malloc Overrides ---
 #ifdef CAN_REPLACE_MALLOC
 void *malloc(size_t size) { return allocate(size); }
-void *calloc(size_t count, size_t unit_size) {
+void *calloc(size_t count, size_t unit_size)
+{
   if (!count || !unit_size)
     return NULL;
   uint64_t size = count * unit_size;

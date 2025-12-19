@@ -2,7 +2,7 @@
 // mem_gc.c
 // -----------------------------------------------------------
 #include "mem_internal.h"
-#include <bits/pthread_types.h>
+#include <pthread.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -11,20 +11,30 @@
 #include <stdio.h>
 #endif
 
+#ifdef _WIN32
+extern void *_bss_start;
+extern void *_bss_end;
+extern void *_data_start;
+extern void *_data_end;
+#endif
+
 // --- Global Scan State ---
 block *mark_queue;
 
 // --- Scanning Helper ---
-void scan_memory_section(void *start, void *end) {
+void scan_memory_section(void *start, void *end)
+{
   // Ensure we start aligned
   uintptr_t current = (uintptr_t)start;
-  if (current % sizeof(void *) != 0) {
+  if (current % sizeof(void *) != 0)
+  {
     current += sizeof(void *) - (current % sizeof(void *));
   }
 
   uintptr_t end_addr = (uintptr_t)end;
 
-  while (current < end_addr) {
+  while (current < end_addr)
+  {
     if (current + sizeof(void *) > end_addr)
       break;
 
@@ -33,12 +43,14 @@ void scan_memory_section(void *start, void *end) {
 
     if (potential_ptr > pool.head &&
         (uintptr_t)potential_ptr <= pool.current_break &&
-        ((uintptr_t)potential_ptr + WORD_SIZE) <= pool.current_break) {
+        ((uintptr_t)potential_ptr + WORD_SIZE) <= pool.current_break)
+    {
 
       block *blk = (struct block *)((uintptr_t)potential_ptr - HEADER_SIZE);
 
       if (blk->head.magic_number == MAGIC_NUMBER &&
-          block_is_live((block *)blk) && !block_is_marked((block *)blk)) {
+          block_is_live((block *)blk) && !block_is_marked((block *)blk))
+      {
 
         block_mark_marked((block *)blk);
 
@@ -52,7 +64,8 @@ void scan_memory_section(void *start, void *end) {
   }
 }
 
-void claim_block(block *free_block) {
+void claim_block(block *free_block)
+{
   if (!block_is_live(free_block) ||
       free_block->head.magic_number != MAGIC_NUMBER)
     return;
@@ -62,7 +75,8 @@ void claim_block(block *free_block) {
 }
 
 // --- Main GC Driver ---
-void scan_for_garbage() {
+void scan_for_garbage()
+{
 
 #ifdef DEBUG
   printf("%s\n", __FUNCTION__);
@@ -87,7 +101,8 @@ void scan_for_garbage() {
   // Mark Phase
   pthread_mutex_lock(&pool_mutex);
 
-  while (true) {
+  while (true)
+  {
     pthread_mutex_lock(&mark_queue_mutex);
     block *current_blk = mark_queue_pop();
     pthread_mutex_unlock(&mark_queue_mutex);
@@ -96,7 +111,8 @@ void scan_for_garbage() {
       break;
 
     if (current_blk->head.magic_number == MAGIC_NUMBER &&
-        block_is_live(current_blk)) {
+        block_is_live(current_blk))
+    {
 
       void *payload_start = (void *)&current_blk->payload;
       void *payload_end = (void *)((uintptr_t)&current_blk->payload +
@@ -109,20 +125,25 @@ void scan_for_garbage() {
   // Sweep Phase
   uintptr_t current_address = (uintptr_t)pool.head;
   while (current_address <= pool.current_break &&
-         (current_address + sizeof(struct block)) <= pool.current_break) {
+         (current_address + sizeof(struct block)) <= pool.current_break)
+  {
 
     block *current_block = (block *)current_address;
     uintptr_t next_address =
         current_address + HEADER_SIZE + current_block->head.block_size;
 
     if (current_block->head.magic_number == MAGIC_NUMBER &&
-        block_is_live(current_block)) {
+        block_is_live(current_block))
+    {
 
       // If it's LIVE but NOT MARKED, it is Garbage!
-      if (!block_is_marked(current_block)) {
+      if (!block_is_marked(current_block))
+      {
         current_block->head.flags = 0;
         block_mark_free(current_block); // Free it
-      } else {
+      }
+      else
+      {
         current_block->head.flags = 0;
         block_mark_live(current_block); // Keep it for next GC
       }
