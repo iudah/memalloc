@@ -5,6 +5,7 @@
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #ifdef _WIN32
 #include <windows.h>
