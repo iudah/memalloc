@@ -27,9 +27,11 @@ void* allocate(uint64_t size) {
   printf("%s: %" PRIu64 "\n", __FUNCTION__, size);
 #endif
 
+#if 0
   if (stack_base == NULL) {
     initialize_stack_ptr();
   }
+#endif
 
   if (last_scan_size != pool.available_size) {
     float ratio = (float)pool.available_size / pool.max_size;
