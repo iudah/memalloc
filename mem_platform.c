@@ -1,15 +1,14 @@
 // -----------------------------------------------------------
 // mem_platform.c
 // -----------------------------------------------------------
+#define _GNU_SOURCE
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define _GNU_SOURCE
-#include <pthread.h>
 
 #include "mem_internal.h"
 
