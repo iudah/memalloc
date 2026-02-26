@@ -234,7 +234,7 @@ bool initialize_pool() {
 }
 
 // --- Global constructor ---
-static void __attribute__((constructor(101))) mem_init() {
+void __attribute__((constructor(201))) mem_alloc_init() {
   if (constructed) return;
 
   constructed = true;

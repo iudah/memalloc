@@ -20,6 +20,8 @@
 
 uint64_t last_scan_size;
 volatile void* stack_base;
+extern bool constructed;
+void __attribute__((constructor(201))) mem_alloc_init();
 
 // --- Allocation API ---
 void* allocate(uint64_t size) {
@@ -32,6 +34,8 @@ void* allocate(uint64_t size) {
     initialize_stack_ptr();
   }
 #endif
+
+if(!constructed)mem_alloc_init();
 
   if (last_scan_size != pool.available_size) {
     float ratio = (float)pool.available_size / pool.max_size;
